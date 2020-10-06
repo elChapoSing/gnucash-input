@@ -39,5 +39,3 @@ if __name__ == '__main__':
 
     if args.source == "DBS":
         DBS.process(filename=args.filename, type=args.type, level_from=args.level_from,current_year=args.current_year)
-    elif args.source == "CA":
-        CA.process(filename=args.filename, type=args.type)
