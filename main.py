@@ -1,18 +1,10 @@
 import os
 import sys
 import argparse
-import logging
 from datetime import datetime as dt
-from CA import CA
 from DBS import DBS
 
 sys.path.append("D:/Projects/gnucash-input")
-
-my_logger = logging.getLogger('Files Processing')
-my_logger.setLevel(logging.DEBUG)
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-my_logger.addHandler(console_handler)
 
 def str2bool(str):
     if str.upper()[0] == "T":
@@ -35,7 +27,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    my_logger.debug(str(args))
 
     if args.source == "DBS":
         DBS.process(filename=args.filename, type=args.type, level_from=args.level_from,current_year=args.current_year)

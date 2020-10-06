@@ -51,7 +51,6 @@ def preprocess_pdf(folder_path, filename):
         retstr = StringIO()
         codec = 'utf-8'
         laparams = LAParams()
-        # device = TextConverter(rsrcmgr, retstr, codec=codec, laparams=laparams)
         device = TextConverter(rsrcmgr, retstr, laparams=laparams)
         fp = open(path, 'rb')
         interpreter = PDFPageInterpreter(rsrcmgr, device)
