@@ -18,3 +18,4 @@ where `input.csv` is in the `DBS/input` folder
 
 The output files will be named `output_checking.ofx` and `output_credit.ofx` in the `DBS/Output` folder.
 
+NOTE : Change the path in line 7 of `main.py` to your folder
