@@ -22,6 +22,7 @@ parser.add_argument('--level_from', required=False, default="pdf", help="run dbs
 parser.add_argument('--current_year', required=False, default=dt.today().year, type=int,
                     help="the year of the dates for the credit card pdf")
 parser.add_argument('--filename', required=True, default=None, help="filename")
+parser.add_argument('--unbilled', required=False, type=bool, default=False, help="is this the unbilled extract ?")
 
 if __name__ == '__main__':
 
@@ -29,4 +30,4 @@ if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
     if args.source == "DBS":
-        DBS.process(filename=args.filename, type=args.type, level_from=args.level_from,current_year=args.current_year)
+        DBS.process(filename=args.filename, type=args.type, level_from=args.level_from,current_year=args.current_year, is_unbilled=args.unbilled)

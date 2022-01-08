@@ -18,7 +18,7 @@ from pdfminer.layout import LAParams
 from pdfminer.pdfpage import PDFPage
 from io import StringIO
 
-#environment stuff
+# environment stuff
 from dotenv import load_dotenv
 from os.path import join
 from os import environ as env
@@ -27,6 +27,7 @@ load_dotenv(".env")
 FIRST_NAME = env.get("FIRST_NAME")
 LAST_NAME = env.get("LAST_NAME")
 SPOUSE_NAME = env.get("SPOUSE_NAME")
+
 
 def gen_ofx(input_path, output_path, is_credit=False):
     if is_credit:
@@ -54,12 +55,13 @@ def preprocess_pdf(folder_path, filename):
         device = TextConverter(rsrcmgr, retstr, laparams=laparams)
         fp = open(path, 'rb')
         interpreter = PDFPageInterpreter(rsrcmgr, device)
-        password = ""
+        # password = ""
         maxpages = 0
         caching = True
         pagenos = set()
-        for page in PDFPage.get_pages(fp, pagenos, maxpages=maxpages, password=password, caching=caching,
-                                      check_extractable=True):
+        # for page in PDFPage.get_pages(fp, pagenos, maxpages=maxpages, password=password, caching=caching,
+        for page in PDFPage.get_pages(fp, pagenos, maxpages=maxpages, caching=caching,
+                                      check_extractable=False):
             interpreter.process_page(page)
         text = retstr.getvalue()
         fp.close()
@@ -76,14 +78,21 @@ def preprocess_pdf(folder_path, filename):
     # values cleanup
     regex_to_remove = [
         r"[0-9]+ of [0-9]+",  # page numbers
-        r"SUB-TOTAL:"
+        r"SUB-TOTAL:",
+        r"PDS_CRCRDGCE_LOC_ESTMT_"
     ]
     value_to_remove = [
+        "Credit Cards",
+        "Statement of Account",
         "Co. Reg. No. 196800306E",
         "GST Registration No: MR-8500180-3",
         "DBS Bank Ltd",
         "Orchard Road P.O.Box 360 S(912312)",
         "www.dbs.com",
+        "DBS Cards P.O. Box 360 S(912312)",
+        "DBS Cards P.O. Box 360 S(912312)Hotline: 1800 111 1111Credit Cards",
+        "Hotline: 1800 111 1111",
+        "Credit Cards"
         f"NEW TRANSACTIONS {SPOUSE_NAME}",
     ]
     regex_to_remove = [re.compile(regex) for regex in regex_to_remove]
@@ -107,7 +116,7 @@ def preprocess_pdf(folder_path, filename):
     return output_folder, output_filename
 
 
-def process_clean_txt(folder, filename, current_year):
+def process_clean_txt(folder, filename, current_year, is_unbilled):
     file_path = "/".join([folder, filename])
     with open(file_path, "r") as myfile:
         text = myfile.readlines()
@@ -116,26 +125,48 @@ def process_clean_txt(folder, filename, current_year):
     text_num = []
     text_str = []
     text_dte = []
-    amount_regex = re.compile(r"[0-9,]+\.[0-9]{2}( CR)*")
-    date_reg = re.compile(r"[0-9]{2} [A-Z]{3}")
+    if is_unbilled:
+        amount_regex = re.compile(r"S\$[0-9,]+\.[0-9]{2}( cr)*")
+    else:
+        amount_regex = re.compile(r"[0-9,]+\.[0-9]{2}( CR)*")
+    if is_unbilled:
+        date_reg = re.compile(r"[0-9]{2} [A-z]{3} [0-9]{4}")
+    else:
+        date_reg = re.compile(r"[0-9]{2} [A-Z]{3}")
     for line in text:
         a = date_reg.match(line)
         if a:
             if not len(line) == a.end() - a.start():
-                raise AssertionError(
-                    f"Extra characters in date row in {file_path}: {line}\nPlease Correct in the text file and rerun in '--level_from txt' mode.")
-            text_dte.append(line)
+                # raise AssertionError(
+                #     f"Extra characters in date row in {file_path}: {line}\nPlease Correct in the text file and rerun in '--level_from txt' mode.")
+
+                print(f"Extra characters in date row in {file_path}: {line}")
+                date_tmp = line[a.start():a.end()]
+                print(f"Date : {date_tmp}")
+                txt_tmp = line[a.end() + 1:]
+                print(f"Text : {txt_tmp}")
+                text_dte.append(date_tmp)
+                text_str.append(txt_tmp)
+            else:
+                text_dte.append(line)
         elif amount_regex.match(line):
-            text_num.append(line)
+            if is_unbilled:
+                text_num.append(line.replace("S$",""))
+            else:
+                text_num.append(line)
         else:
             text_str.append(line)
 
     # clean numbers
-    clean_num = text_num[2:]  # get rid of last month balance
-    clean_num = [num.replace(",", "") for num in clean_num ]
+    clean_num = text_num
+    clean_num = [num.replace(",", "") for num in clean_num]
+    if is_unbilled:
+        test_str = "cr"
+    else:
+        test_str = "CR"
     for i, num in enumerate(clean_num):
-        if "CR" in num:
-            clean_num[i] = float(num.replace("CR", ""))
+        if test_str in num:
+            clean_num[i] = float(num.replace(test_str, ""))
         else:
             clean_num[i] = -float(num)
     all_num = True
@@ -147,19 +178,23 @@ def process_clean_txt(folder, filename, current_year):
         else:
             clean_num = [num for num in clean_num if not abs(float(num)) == abs(float(subtotal_amount))]
 
-
     # clean descriptions
-    currencies = ["DONG", "EUROPEAN MONETARY COOP FUND", "U. S. DOLLAR"]
+    currencies = ["DONG", "EUROPEAN MONETARY COOP FUND", "U. S. DOLLAR", "POUND STERLING", "YEN"]
     currencies_reg = [re.compile(x) for x in currencies]
     clean_str = []
     for i, txt in enumerate(text_str):
         if any([x.match(txt) for x in currencies_reg]):
-            clean_str[len(clean_str)-1] = clean_str[len(clean_str)-1] + " " + txt
+            clean_str[len(clean_str) - 1] = clean_str[len(clean_str) - 1] + " " + txt
         else:
             clean_str.append(txt)
 
-    # clean dates
-    clean_dte = [dt.strptime(x, "%d %b").replace(year=current_year).strftime("%Y-%m-%d") for x in text_dte]
+    if is_unbilled:
+        # clean dates
+        clean_dte = [dt.strptime(x, "%d %b %Y").strftime("%Y-%m-%d") for x in text_dte]
+    else:
+        # clean dates
+        clean_dte = [dt.strptime(x, "%d %b").replace(year=current_year-1).strftime("%Y-%m-%d") if dt.strptime(x, "%d %b").month > 1 else dt.strptime(x, "%d %b").replace(year=current_year).strftime("%Y-%m-%d") for x in text_dte]
+        # clean_dte = [dt.strptime(x, "%d %b").replace(year=current_year).strftime("%Y-%m-%d") for x in text_dte]
 
     if len({len(clean_dte), len(clean_str), len(clean_num)}) != 1:
         a = it.zip_longest(text_num, clean_num, text_dte, clean_dte, text_str, clean_str, fillvalue="NA")
@@ -174,13 +209,25 @@ def process_clean_txt(folder, filename, current_year):
     output_df["Description"] = clean_str
     output_df["Notes"] = ""
     output_folder = folder
+
     output_filename = "output.csv"
+    output_filename_deposit = "output_deposit.csv"
+    output_filename_withdrawal = "output_withdrawal.csv"
+
     output_path = "/".join([output_folder, output_filename])
+    output_path_deposit = "/".join([output_folder, output_filename_deposit])
+    output_path_withdrawal = "/".join([output_folder, output_filename_withdrawal])
+
     output_df.to_csv(output_path, index=False)
+    output_df[output_df["Amount"] > 0].to_csv(output_path_deposit, index=False)
+    temp_df = output_df[output_df["Amount"] < 0].copy(True)
+    temp_df["Amount"] = -temp_df["Amount"]
+    temp_df.to_csv(output_path_withdrawal, index=False)
+
     return output_folder, output_filename
 
 
-def process(filename, type, level_from, current_year):
+def process(filename, type, level_from, current_year, is_unbilled=False):
     print(filename)
     print("process DBS files")
     is_credit = False
@@ -194,7 +241,7 @@ def process(filename, type, level_from, current_year):
         else:
             txt_folder, txt_filename = "./DBS/Input", filename
         if level_from == "txt" or level_from == "pdf":
-            csv_folder, csv_filename = process_clean_txt(txt_folder, txt_filename, current_year)
+            csv_folder, csv_filename = process_clean_txt(txt_folder, txt_filename, current_year, is_unbilled)
         else:
             csv_folder, csv_filename = "./DBS/Input", filename
 
